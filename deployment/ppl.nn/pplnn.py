@@ -1,27 +1,24 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
+# Copyright (c) 2021, The Open PPL teams.
+# Copyright (c) 2021, Zhiqiang Wang.
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import os
-import logging
+from pathlib import PurePath
 import argparse
+import logging
 import random
 import numpy as np
-from pyppl import nn as pplnn
-from pyppl import common as pplcommon
+from pyppl import nn as pplnn, common as pplcommon
 
 
 def get_args_parser():
@@ -98,36 +95,56 @@ G_PPLNN_DATA_TYPE_STR_MAPS = {
 }
 
 
-def register_engines(args):
+def register_engines(
+    use_x86=True,
+    disable_avx512=False,
+    use_cuda=False,
+    device_id=0,
+    quick_select=False,
+):
+    """Register engines"""
+    if use_cuda:
+        return register_engines_gpu(device_id=device_id, quick_select=quick_select)
+    elif use_x86:
+        return register_engines_cpu(disable_avx512=disable_avx512)
+    else:
+        raise NotImplementedError("Currently not supports this device")
+
+
+def register_engines_cpu(disable_avx512=False):
     engines = []
-    if args.use_x86:
-        x86_engine = pplnn.X86EngineFactory.Create()
-        if not x86_engine:
-            raise RuntimeError("Create x86 engine failed.")
+    x86_engine = pplnn.X86EngineFactory.Create()
+    if not x86_engine:
+        raise RuntimeError("Create x86 engine failed.")
 
-        if args.disable_avx512:
-            status = x86_engine.Configure(pplnn.X86_CONF_DISABLE_AVX512)
-            if status != pplcommon.RC_SUCCESS:
-                raise RuntimeError(
-                    f"x86 engine Configure() failed: {pplcommon.GetRetCodeStr(status)}")
+    if disable_avx512:
+        status = x86_engine.Configure(pplnn.X86_CONF_DISABLE_AVX512)
+        if status != pplcommon.RC_SUCCESS:
+            raise RuntimeError(
+                f"x86 engine Configure() failed: {pplcommon.GetRetCodeStr(status)}")
 
-        engines.append(pplnn.Engine(x86_engine))
+    engines.append(pplnn.Engine(x86_engine))
 
-    if args.use_cuda:
-        cuda_options = pplnn.CudaEngineOptions()
-        cuda_options.device_id = args.device_id
+    return engines
 
-        cuda_engine = pplnn.CudaEngineFactory.Create(cuda_options)
-        if not cuda_engine:
-            raise RuntimeError("Create cuda engine failed.")
 
-        if args.quick_select:
-            status = cuda_engine.Configure(pplnn.CUDA_CONF_USE_DEFAULT_ALGORITHMS)
-            if status != pplcommon.RC_SUCCESS:
-                raise RuntimeError(
-                    f"cuda engine Configure() failed: {pplcommon.GetRetCodeStr(status)}")
+def register_engines_gpu(device_id=0, quick_select=False):
+    engines = []
 
-        engines.append(pplnn.Engine(cuda_engine))
+    cuda_options = pplnn.CudaEngineOptions()
+    cuda_options.device_id = device_id
+
+    cuda_engine = pplnn.CudaEngineFactory.Create(cuda_options)
+    if not cuda_engine:
+        raise RuntimeError("Create cuda engine failed.")
+
+    if quick_select:
+        status = cuda_engine.Configure(pplnn.CUDA_CONF_USE_DEFAULT_ALGORITHMS)
+        if status != pplcommon.RC_SUCCESS:
+            raise RuntimeError(
+                f"cuda engine Configure() failed: {pplcommon.GetRetCodeStr(status)}")
+
+    engines.append(pplnn.Engine(cuda_engine))
 
     return engines
 
@@ -174,7 +191,7 @@ def set_reshaped_inputs_one_by_one(reshaped_inputs, runtime):
             f"input file num[{str(file_num)}] != graph input num[{runtime.GetInputCount()}]")
 
     for i in range(file_num):
-        input_file_name = os.path.basename(input_files[i])
+        input_file_name = PurePath(input_files[i]).name
         file_name_components = input_file_name.split("-")
         if len(file_name_components) != 3:
             raise ValueError(
@@ -288,32 +305,30 @@ def calc_bytes(dims, item_size):
     return nbytes
 
 
+def logging_info(prefix, i, tensor, shape, dims):
+    logging.info(f"{prefix}[{i}]")
+    logging.info(f"\tname: {tensor.GetName()}")
+    logging.info(f"\tdim(s): {dims}")
+    logging.info(f"\ttype: {pplcommon.GetDataTypeStr(shape.GetDataType())}")
+    logging.info(f"\tformat: {pplcommon.GetDataFormatStr(shape.GetDataFormat())}")
+    byte_excluding_padding = calc_bytes(dims, pplcommon.GetSizeOfDataType(shape.GetDataType()))
+    logging.info(f"\tbyte(s) excluding padding: {byte_excluding_padding}")
+
+
 def print_input_output_info(runtime):
-    logging.info("----- input info -----")
     for i in range(runtime.GetInputCount()):
         tensor = runtime.GetInputTensor(i)
         shape = tensor.GetShape()
         dims = shape.GetDims()
-        logging.info("input[" + str(i) + "]")
-        logging.info("    name: " + tensor.GetName())
-        logging.info("    dim(s): " + str(dims))
-        logging.info("    type: " + pplcommon.GetDataTypeStr(shape.GetDataType()))
-        logging.info("    format: " + pplcommon.GetDataFormatStr(shape.GetDataFormat()))
-        logging.info("    byte(s) excluding padding: " + str(calc_bytes(
-            dims, pplcommon.GetSizeOfDataType(shape.GetDataType()))))
+        prefix = "input"
+        logging_info(prefix, i, tensor, shape, dims)
 
-    logging.info("----- output info -----")
     for i in range(runtime.GetOutputCount()):
         tensor = runtime.GetOutputTensor(i)
         shape = tensor.GetShape()
         dims = shape.GetDims()
-        logging.info("output[" + str(i) + "]")
-        logging.info("    name: " + tensor.GetName())
-        logging.info("    dim(s): " + str(dims))
-        logging.info("    type: " + pplcommon.GetDataTypeStr(shape.GetDataType()))
-        logging.info("    format: " + pplcommon.GetDataFormatStr(shape.GetDataFormat()))
-        logging.info("    byte(s) excluding padding: " + str(calc_bytes(
-            dims, pplcommon.GetSizeOfDataType(shape.GetDataType()))))
+        prefix = "output"
+        logging_info(prefix, i, tensor, shape, dims)
 
 
 def cli_main():
@@ -325,17 +340,31 @@ def cli_main():
     if args.display_version:
         logging.info("PPLNN version: " + pplnn.GetVersionString())
 
-    engines = register_engines(args)
+    # Register Engines
+    use_x86, use_cuda = args.use_x86, args.use_cuda
+    if not (use_x86 + use_cuda == 1):
+        raise NotImplementedError("Current only one device can be enabled.")
 
+    engines = register_engines(
+        use_x86=use_x86,
+        disable_avx512=args.disable_avx512,
+        use_cuda=use_cuda,
+        device_id=args.device_id,
+        quick_select=args.quick_select,
+    )
+
+    # Creating a Runtime Builder
     runtime_builder = pplnn.OnnxRuntimeBuilderFactory.CreateFromFile(args.onnx_model, engines)
     if not runtime_builder:
         raise RuntimeError("Create OnnxRuntimeBuilder failed.")
 
+    # Creating a Runtime Instance
     runtime_options = pplnn.RuntimeOptions()
     runtime = runtime_builder.CreateRuntime(runtime_options)
     if not runtime:
         raise RuntimeError("Create Runtime instance failed.")
 
+    # Filling Inputs
     in_shapes = parse_in_shapes(args.in_shapes)
 
     if args.inputs:
