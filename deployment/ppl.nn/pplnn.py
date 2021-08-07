@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import PurePath
+from pathlib import PurePath, Path
 import argparse
 import logging
 import random
@@ -36,14 +36,14 @@ def get_args_parser():
 
     parser.add_argument("--onnx_model", required=True,
                         help="Path of the onnx model file")
-    parser.add_argument("--in_shapes", type=str, default="",
+    parser.add_argument("--in_shapes", type=str, default=None,
                         help="Shapes of input tensors. dims are separated "
                              "by underline, inputs are separated by comma. "
                              "example: 1_3_128_128, 2_3_400_640, 3_3_768_1024")
 
-    parser.add_argument("--inputs", type=str, default="",
+    parser.add_argument("--inputs", type=str, default=None,
                         help="The input files are separated by comma.")
-    parser.add_argument("--reshaped_inputs", type=str, default="",
+    parser.add_argument("--reshaped_inputs", type=str, default=None,
                         help="Binary input files separated by comma. file name "
                              "format: 'name-dims-datatype.dat'. for example: "
                              "input1-1_1_1_1-fp32.dat, input2-1_1_1_1-fp16.dat or "
@@ -56,42 +56,42 @@ def get_args_parser():
                         help="Switch used to save separated input tensors to NDARRAY format")
     parser.add_argument("--save_outputs", action="store_true",
                         help="Switch used to save separated output tensors to NDARRAY format")
-    parser.add_argument("--save_data_dir", type=str, default=".",
+    parser.add_argument("--output_path", type=str, default=".",
                         help="The directory to save input/output data if '--save_*' "
                              "options are enabled.")
     return parser
 
 
 G_PPLNN_DATA_TYPE_NUMPY_MAPS = {
-    pplcommon.DATATYPE_INT8 : np.int8,
-    pplcommon.DATATYPE_INT16 : np.int16,
-    pplcommon.DATATYPE_INT32 : np.int32,
-    pplcommon.DATATYPE_INT64 : np.int64,
-    pplcommon.DATATYPE_UINT8 : np.uint8,
-    pplcommon.DATATYPE_UINT16 : np.uint16,
-    pplcommon.DATATYPE_UINT32 : np.uint32,
-    pplcommon.DATATYPE_UINT64 : np.uint64,
-    pplcommon.DATATYPE_FLOAT16 : np.float16,
-    pplcommon.DATATYPE_FLOAT32 : np.float32,
-    pplcommon.DATATYPE_FLOAT64 : np.float64,
-    pplcommon.DATATYPE_BOOL : bool,
+    pplcommon.DATATYPE_INT8: np.int8,
+    pplcommon.DATATYPE_INT16: np.int16,
+    pplcommon.DATATYPE_INT32: np.int32,
+    pplcommon.DATATYPE_INT64: np.int64,
+    pplcommon.DATATYPE_UINT8: np.uint8,
+    pplcommon.DATATYPE_UINT16: np.uint16,
+    pplcommon.DATATYPE_UINT32: np.uint32,
+    pplcommon.DATATYPE_UINT64: np.uint64,
+    pplcommon.DATATYPE_FLOAT16: np.float16,
+    pplcommon.DATATYPE_FLOAT32: np.float32,
+    pplcommon.DATATYPE_FLOAT64: np.float64,
+    pplcommon.DATATYPE_BOOL: bool,
 }
 
 
 G_PPLNN_DATA_TYPE_STR_MAPS = {
-    pplcommon.DATATYPE_INT8 : "int8",
-    pplcommon.DATATYPE_INT16 : "int16",
-    pplcommon.DATATYPE_INT32 : "int32",
-    pplcommon.DATATYPE_INT64 : "int64",
-    pplcommon.DATATYPE_UINT8 : "uint8",
-    pplcommon.DATATYPE_UINT16 : "uint16",
-    pplcommon.DATATYPE_UINT32 : "uint32",
-    pplcommon.DATATYPE_UINT64 : "uint64",
-    pplcommon.DATATYPE_FLOAT16 : "fp16",
-    pplcommon.DATATYPE_FLOAT32 : "fp32",
-    pplcommon.DATATYPE_FLOAT64 : "fp64",
-    pplcommon.DATATYPE_BOOL : "bool",
-    pplcommon.DATATYPE_UNKNOWN : "unknown",
+    pplcommon.DATATYPE_INT8: "int8",
+    pplcommon.DATATYPE_INT16: "int16",
+    pplcommon.DATATYPE_INT32: "int32",
+    pplcommon.DATATYPE_INT64: "int64",
+    pplcommon.DATATYPE_UINT8: "uint8",
+    pplcommon.DATATYPE_UINT16: "uint16",
+    pplcommon.DATATYPE_UINT32: "uint32",
+    pplcommon.DATATYPE_UINT64: "uint64",
+    pplcommon.DATATYPE_FLOAT16: "fp16",
+    pplcommon.DATATYPE_FLOAT32: "fp32",
+    pplcommon.DATATYPE_FLOAT64: "fp64",
+    pplcommon.DATATYPE_BOOL: "bool",
+    pplcommon.DATATYPE_UNKNOWN: "unknown",
 }
 
 
@@ -150,8 +150,8 @@ def register_engines_gpu(device_id=0, quick_select=False):
 
 
 def parse_in_shapes(in_shapes_str):
+    shape_strs = in_shapes_str.split(",") if in_shapes_str else []
     ret = []
-    shape_strs = list(filter(None, in_shapes_str.split(",")))
     for s in shape_strs:
         dims = [int(d) for d in s.split("_")]
         ret.append(dims)
@@ -159,7 +159,7 @@ def parse_in_shapes(in_shapes_str):
 
 
 def set_input_one_by_one(inputs, in_shapes, runtime):
-    input_files = list(filter(None, inputs.split(",")))
+    input_files = inputs.split(",") if inputs else []
     file_num = len(input_files)
     if file_num != runtime.GetInputCount():
         raise RuntimeError(
@@ -184,7 +184,7 @@ def set_input_one_by_one(inputs, in_shapes, runtime):
 
 
 def set_reshaped_inputs_one_by_one(reshaped_inputs, runtime):
-    input_files = list(filter(None, reshaped_inputs.split(",")))
+    input_files = reshaped_inputs.split(",") if reshaped_inputs else []
     file_num = len(input_files)
     if file_num != runtime.GetInputCount():
         raise RuntimeError(
@@ -242,7 +242,7 @@ def set_random_inputs(in_shapes, runtime):
         else:
             dims = generate_random_dims(shape)
 
-        in_data = (upper_bound - lower_bound) * rng.random(dims, dtype = np_data_type) * lower_bound
+        in_data = (upper_bound - lower_bound) * rng.random(dims, dtype=np_data_type) * lower_bound
         status = tensor.ConvertFromHost(in_data)
         if status != pplcommon.RC_SUCCESS:
             raise RuntimeError(
@@ -259,7 +259,7 @@ def gen_dims_str(dims):
     return s
 
 
-def save_inputs_one_by_one(save_data_dir, runtime):
+def save_inputs_one_by_one(output_path, runtime):
     for i in range(runtime.GetInputCount()):
         tensor = runtime.GetInputTensor(i)
         shape = tensor.GetShape()
@@ -268,13 +268,14 @@ def save_inputs_one_by_one(save_data_dir, runtime):
             raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
 
         in_data = np.array(tensor_data, copy=False)
-        in_data.tofile(save_data_dir + "/pplnn_input_" + str(i) + "_" +
-                       tensor.GetName() + "-" + gen_dims_str(shape.GetDims()) + "-" +
-                       G_PPLNN_DATA_TYPE_STR_MAPS[shape.GetDataType()] + ".dat")
+        out_data_path_name = (f"pplnn_input_{i}_{tensor.GetName()}-"
+                              f"{gen_dims_str(shape.GetDims())}-"
+                              f"{G_PPLNN_DATA_TYPE_STR_MAPS[shape.GetDataType()]}.dat")
+        in_data.tofile(output_path / out_data_path_name)
 
 
-def save_inputs_all_in_one(save_data_dir, runtime):
-    out_file_name = save_data_dir + "/pplnn_inputs.dat"
+def save_inputs_all_in_one(output_path, runtime):
+    out_file_name = output_path / "pplnn_inputs.dat"
     fd = open(out_file_name, mode="wb+")
     for i in range(runtime.GetInputCount()):
         tensor = runtime.GetInputTensor(i)
@@ -287,7 +288,7 @@ def save_inputs_all_in_one(save_data_dir, runtime):
     fd.close()
 
 
-def save_outputs_one_by_one(save_data_dir, runtime):
+def save_outputs_one_by_one(output_path, runtime):
     for i in range(runtime.GetOutputCount()):
         tensor = runtime.GetOutputTensor(i)
         tensor_data = tensor.ConvertToHost()
@@ -295,7 +296,7 @@ def save_outputs_one_by_one(save_data_dir, runtime):
             raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
 
         out_data = np.array(tensor_data, copy=False)
-        out_data.tofile(save_data_dir + "/pplnn_output-" + tensor.GetName() + ".dat")
+        out_data.tofile(output_path / f"pplnn_output-{tensor.GetName()}.dat")
 
 
 def calc_bytes(dims, item_size):
@@ -374,10 +375,13 @@ def cli_main():
     else:
         set_random_inputs(in_shapes, runtime)
 
+    output_path = Path(args.output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+
     if args.save_input:
-        save_inputs_all_in_one(args.save_data_dir, runtime)
+        save_inputs_all_in_one(output_path, runtime)
     if args.save_inputs:
-        save_inputs_one_by_one(args.save_data_dir, runtime)
+        save_inputs_one_by_one(output_path, runtime)
 
     status = runtime.Run()
     if status != pplcommon.RC_SUCCESS:
@@ -390,7 +394,7 @@ def cli_main():
     print_input_output_info(runtime)
 
     if args.save_outputs:
-        save_outputs_one_by_one(args.save_data_dir, runtime)
+        save_outputs_one_by_one(output_path, runtime)
 
     logging.info("Run OKAY!")
 
