@@ -343,8 +343,8 @@ def cli_main():
 
     # Register Engines
     use_x86, use_cuda = args.use_x86, args.use_cuda
-    if not (use_x86 + use_cuda == 1):
-        raise NotImplementedError("Current only one device can be enabled.")
+    if use_x86 == use_cuda:
+        raise NotImplementedError("Currently one and only one device should be enabled.")
 
     engines = register_engines(
         use_x86=use_x86,
