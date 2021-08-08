@@ -276,16 +276,15 @@ def save_inputs_one_by_one(output_path, runtime):
 
 def save_inputs_all_in_one(output_path, runtime):
     out_file_name = output_path / "pplnn_inputs.dat"
-    fd = open(out_file_name, mode="wb+")
-    for i in range(runtime.GetInputCount()):
-        tensor = runtime.GetInputTensor(i)
-        tensor_data = tensor.ConvertToHost()
-        if not tensor_data:
-            raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
+    with open(out_file_name, mode="wb+") as fd:
+        for i in range(runtime.GetInputCount()):
+            tensor = runtime.GetInputTensor(i)
+            tensor_data = tensor.ConvertToHost()
+            if not tensor_data:
+                raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
 
-        in_data = np.array(tensor_data, copy=False)
-        fd.write(in_data.tobytes())
-    fd.close()
+            in_data = np.array(tensor_data, copy=False)
+            fd.write(in_data.tobytes())
 
 
 def save_outputs_one_by_one(output_path, runtime):
@@ -383,6 +382,7 @@ def cli_main():
     if args.save_inputs:
         save_inputs_one_by_one(output_path, runtime)
 
+    # Getting Results
     status = runtime.Run()
     if status != pplcommon.RC_SUCCESS:
         raise RuntimeError(f"Run() failed: {pplcommon.GetRetCodeStr(status)}")
