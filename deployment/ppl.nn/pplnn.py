@@ -1,4 +1,4 @@
-# Copyright (c) 2021, The Open PPL teams.
+# Copyright (c) 2021, The OpenPPL teams.
 # Copyright (c) 2021, Zhiqiang Wang.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -163,7 +163,7 @@ def set_input_one_by_one(inputs, in_shapes, runtime):
     file_num = len(input_files)
     if file_num != runtime.GetInputCount():
         raise RuntimeError(
-            f"input file num[{str(file_num)}] != graph input num[{runtime.GetInputCount()}]")
+            f"Input file num[{str(file_num)}] != graph input num[{runtime.GetInputCount()}]")
 
     for i in range(file_num):
         tensor = runtime.GetInputTensor(i)
@@ -177,10 +177,11 @@ def set_input_one_by_one(inputs, in_shapes, runtime):
             dims = shape.GetDims()
 
         in_data = np.fromfile(input_files[i], dtype=np_data_type).reshape(dims)
+        # convert data type & format from `in_data` to `tensor` & fill data
         status = tensor.ConvertFromHost(in_data)
         if status != pplcommon.RC_SUCCESS:
             raise RuntimeError(
-                f"copy data to tensor[{tensor.GetName()}] failed: {pplcommon.GetRetCodeStr(status)}")
+                f"Copy data to tensor[{tensor.GetName()}] failed: {pplcommon.GetRetCodeStr(status)}")
 
 
 def set_reshaped_inputs_one_by_one(reshaped_inputs, runtime):
@@ -188,7 +189,7 @@ def set_reshaped_inputs_one_by_one(reshaped_inputs, runtime):
     file_num = len(input_files)
     if file_num != runtime.GetInputCount():
         raise RuntimeError(
-            f"input file num[{str(file_num)}] != graph input num[{runtime.GetInputCount()}]")
+            f"Input file num[{str(file_num)}] != graph input num[{runtime.GetInputCount()}]")
 
     for i in range(file_num):
         input_file_name = PurePath(input_files[i]).name
@@ -207,7 +208,7 @@ def set_reshaped_inputs_one_by_one(reshaped_inputs, runtime):
         status = tensor.ConvertFromHost(in_data)
         if status != pplcommon.RC_SUCCESS:
             raise RuntimeError(
-                f"copy data to tensor[{tensor.GetName()}] failed: {pplcommon.GetRetCodeStr(status)}")
+                f"Copy data to tensor[{tensor.GetName()}] failed: {pplcommon.GetRetCodeStr(status)}")
 
 
 def set_random_inputs(in_shapes, runtime):
@@ -246,7 +247,7 @@ def set_random_inputs(in_shapes, runtime):
         status = tensor.ConvertFromHost(in_data)
         if status != pplcommon.RC_SUCCESS:
             raise RuntimeError(
-                f"copy data to tensor[{tensor.GetName()}] failed: {pplcommon.GetRetCodeStr(status)}")
+                f"Copy data to tensor[{tensor.GetName()}] failed: {pplcommon.GetRetCodeStr(status)}")
 
 
 def gen_dims_str(dims):
@@ -265,7 +266,7 @@ def save_inputs_one_by_one(output_path, runtime):
         shape = tensor.GetShape()
         tensor_data = tensor.ConvertToHost()
         if not tensor_data:
-            raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
+            raise RuntimeError(f"Copy data from tensor[{tensor.GetName()}] failed.")
 
         in_data = np.array(tensor_data, copy=False)
         out_data_path_name = (f"pplnn_input_{i}_{tensor.GetName()}-"
@@ -281,7 +282,7 @@ def save_inputs_all_in_one(output_path, runtime):
             tensor = runtime.GetInputTensor(i)
             tensor_data = tensor.ConvertToHost()
             if not tensor_data:
-                raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
+                raise RuntimeError(f"Copy data from tensor[{tensor.GetName()}] failed.")
 
             in_data = np.array(tensor_data, copy=False)
             fd.write(in_data.tobytes())
@@ -292,7 +293,7 @@ def save_outputs_one_by_one(output_path, runtime):
         tensor = runtime.GetOutputTensor(i)
         tensor_data = tensor.ConvertToHost()
         if not tensor_data:
-            raise RuntimeError(f"copy data from tensor[{tensor.GetName()}] failed.")
+            raise RuntimeError(f"Copy data from tensor[{tensor.GetName()}] failed.")
 
         out_data = np.array(tensor_data, copy=False)
         out_data.tofile(output_path / f"pplnn_output-{tensor.GetName()}.dat")
@@ -338,7 +339,7 @@ def cli_main():
     args = parser.parse_args()
 
     if args.display_version:
-        logging.info("PPLNN version: " + pplnn.GetVersionString())
+        logging.info(f"PPLNN version: {pplnn.GetVersionString()}")
 
     # Register Engines
     use_x86, use_cuda = args.use_x86, args.use_cuda
@@ -364,7 +365,7 @@ def cli_main():
     if not runtime:
         raise RuntimeError("Create Runtime instance failed.")
 
-    # Filling Inputs
+    # Filling Input Data to Runtime
     in_shapes = parse_in_shapes(args.in_shapes)
 
     if args.inputs:
@@ -382,21 +383,22 @@ def cli_main():
     if args.save_inputs:
         save_inputs_one_by_one(output_path, runtime)
 
-    # Getting Results
+    # Forward
     status = runtime.Run()
     if status != pplcommon.RC_SUCCESS:
         raise RuntimeError(f"Run() failed: {pplcommon.GetRetCodeStr(status)}")
 
-    status = runtime.Sync()
+    status = runtime.Sync()  # wait for all ops run finished
     if status != pplcommon.RC_SUCCESS:
         raise RuntimeError(f"Run() failed: {pplcommon.GetRetCodeStr(status)}")
 
+    logging.info("Successfully run network!")
+
+    # Getting Results
     print_input_output_info(runtime)
 
     if args.save_outputs:
         save_outputs_one_by_one(output_path, runtime)
-
-    logging.info("Run OKAY!")
 
 
 if __name__ == "__main__":
