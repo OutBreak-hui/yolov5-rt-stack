@@ -18,7 +18,7 @@ import logging
 try:
     from pyppl import common as pplcommon
 except ImportError:
-    pplnn, pplcommon = None, None
+    pplcommon = None
 
 
 def logging_info(prefix, i, tensor, shape, dims):

@@ -69,7 +69,7 @@ def get_args_parser():
                         help="Switch used to save separated input tensors to NDARRAY format")
     parser.add_argument("--save_outputs", action="store_true",
                         help="Switch used to save separated output tensors to NDARRAY format")
-    parser.add_argument("--output_path", type=str, default=".",
+    parser.add_argument("--output_path", type=str, default="./",
                         help="The directory to save input/output data if '--save_*' "
                              "options are enabled.")
     return parser
