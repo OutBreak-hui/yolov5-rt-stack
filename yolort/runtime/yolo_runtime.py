@@ -1,16 +1,17 @@
 # Copyright (c) 2021, Zhiqiang Wang. All Rights Reserved.
 from typing import Any, Callable, Tuple, Optional
 
+from .transform import YOLORTTransform
 
-class YOLORuntimeBase:
+
+class YOLORuntime:
     """
-    PyTorch Lightning wrapper of `YOLO`
+    YOLO Runtime Wrapper.
     """
     def __init__(
         self,
         engine,
         size: Tuple[int, int] = (640, 640),
-        **kwargs: Any,
     ):
         """
         Args:
@@ -19,7 +20,7 @@ class YOLORuntimeBase:
             num_classes: number of detection classes (doesn't including background)
         """
         self.engine = engine
-        self.transform = Transform(min(size), max(size), fixed_size=size)
+        self.transform = YOLORTTransform(min(size), max(size), fixed_size=size)
 
     def predict(
         self,
